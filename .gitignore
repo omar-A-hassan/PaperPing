@@ -1,0 +1,40 @@
+
+# Dependencies
+node_modules/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build and test outputs
+dist/
+build/
+coverage/
+.turbo/
+
+# TypeScript incremental state
+*.tsbuildinfo
+
+# Cache directories
+.cache/
+.tmp/
+tmp/
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Local tooling/runtime state
+.claude-flow/
+.claude
+.mcp.json
+claude.md

@@ -1,0 +1,19 @@
+{
+  "name": "paper-digest",
+  "version": "1.0.0",
+  "description": "iMessage agent: text it a paper link, get a 3-sentence digest back",
+  "type": "module",
+  "scripts": {
+    "start": "bun run agent.ts",
+    "dev": "bun --watch agent.ts"
+  },
+  "dependencies": {
+    "@photon-ai/imessage-kit": "latest",
+    "pdf-parse": "^2.4.5",
+    "sqlite-vec": "^0.1.7"
+  },
+  "devDependencies": {
+    "@types/pdf-parse": "^1.1.5",
+    "bun-types": "^1.3.11"
+  }
+}
