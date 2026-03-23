@@ -1,10 +1,10 @@
-# Scholar
+# PaperPing
 
-> Your research assistant in iMessage.
+> Text a paper. Get the point.
 
-Scholar runs locally on your Mac. Text it an arXiv link, a question, or a paper you want to understand — it reads the paper, answers follow-up questions, subscribes you to morning briefings, and builds a memory of everything you've studied over time.
+PaperPing runs locally on your Mac. Text it an arXiv link, a question, or a paper you want to understand — it reads the paper, answers follow-up questions, subscribes you to morning briefings, and builds a memory of everything you've studied over time.
 
-Built with [Photon iMessage Kit](https://github.com/photon-hq/imessage-kit), [Bun](https://bun.sh), and SQLite. No cloud sync. All data stays on your machine at `~/.scholar/scholar.db`.
+Built with [Photon iMessage Kit](https://github.com/photon-hq/imessage-kit), [Bun](https://bun.sh), and SQLite. Your library is stored locally at `~/.scholar/scholar.db` — your conversation history and papers never leave your machine, but messages and paper content are sent to your configured LLM provider (Anthropic or OpenRouter) to generate responses and digests.
 
 ---
 
@@ -33,7 +33,7 @@ export LLM_MODEL="openrouter/auto"       # optional, defaults to auto
 
 # 5. (Optional) Install Ollama for semantic memory
 #    brew install ollama && ollama pull nomic-embed-text
-#    Without Ollama, Scholar falls back to recency-based session retrieval
+#    Without Ollama, PaperPing falls back to recency-based session retrieval
 
 # 6. Run
 bun run agent.ts
@@ -43,9 +43,9 @@ bun run agent.ts
 
 ## What you can do
 
-Scholar is conversational — just text naturally. These are the things it understands:
+PaperPing is conversational — just text naturally. These are the things it understands:
 
-| What you send | What Scholar does |
+| What you send | What PaperPing does |
 |---|---|
 | `arxiv.org/abs/2405.21060` or `2405.21060` | Fetch the paper, generate a 3-sentence digest, save to library |
 | `find me recent papers on Mamba` | Search arXiv, return numbered list |
@@ -55,7 +55,7 @@ Scholar is conversational — just text naturally. These are the things it under
 | `explain section 4` | Retrieve the relevant passage from full text |
 | `what did I read about attention?` | Full-text search your library |
 | `follow cs.LG` | Subscribe to daily morning briefings for a category |
-| `follow NLP` | Same — Scholar infers `cs.CL` |
+| `follow NLP` | Same — PaperPing infers `cs.CL` |
 | `unfollow cs.LG` | Remove a subscription |
 | `my topics` | List active subscriptions |
 | `my history` | Your 5 most recently read papers |
@@ -69,7 +69,7 @@ Scholar is conversational — just text naturally. These are the things it under
 
 ## Morning Briefing
 
-Subscribe to a topic and Scholar texts you at 7am with the newest papers — no prompt needed.
+Subscribe to a topic and PaperPing texts you at 7am with the newest papers — no prompt needed.
 
 ```
 ☀️ Good morning! Here's what's new in your fields:
@@ -88,33 +88,33 @@ Change time: text `send my briefing at 8:30am`
 
 ## Memory Architecture
 
-Scholar maintains three tiers of memory across all sessions:
+PaperPing maintains three tiers of memory across all sessions:
 
 **Tier 1 — Working memory (this conversation)**
 Raw turns from the current session, compressed into a rolling summary as the conversation grows. Never truncates — always compresses.
 
 **Tier 2 — Episodic memory (past sessions)**
-At the end of each session (after 60 min of idle), Scholar summarizes the full conversation (topics, papers fetched, open questions) and stores it. These summaries are retrieved at the start of your next conversation, either by recency or — if Ollama is running — by semantic similarity to what you're asking about.
+At the end of each session (after 60 min of idle), PaperPing summarizes the full conversation (topics, papers fetched, open questions) and stores it. These summaries are retrieved at the start of your next conversation, either by recency or — if Ollama is running — by semantic similarity to what you're asking about.
 
 **Tier 3 — Semantic memory (your profile)**
-Scholar tracks your research interests, expertise level per domain, communication preferences, and ongoing projects. This profile is built automatically from your conversations and injected into every LLM call to personalize responses.
+PaperPing tracks your research interests, expertise level per domain, communication preferences, and ongoing projects. This profile is built automatically from your conversations and injected into every LLM call to personalize responses.
 
 ---
 
 ## Full Paper Reading
 
-Beyond abstracts, Scholar can read complete papers:
+Beyond abstracts, PaperPing can read complete papers:
 
 ```
 You:      deep read 2405.21060
-Scholar:  📖 Loading full paper... done (42 sections extracted)
+PaperPing:  📖 Loading full paper... done (42 sections extracted)
 
 You:      what is the exact complexity of the SSD algorithm?
-Scholar:  [retrieves section 3.2] The SSD algorithm runs in O(TLN²)
+PaperPing:  [retrieves section 3.2] The SSD algorithm runs in O(TLN²)
           time where T is sequence length, L is number of layers...
 
 You:      what does figure 4 show?
-Scholar:  Figure 4 shows a comparison of training throughput between
+PaperPing:  Figure 4 shows a comparison of training throughput between
           Mamba-2 and FlashAttention-2 across sequence lengths...
 ```
 
@@ -122,7 +122,7 @@ Scholar:  Figure 4 shows a comparison of training throughput between
 
 ## PDF Attachments
 
-Drag any PDF into iMessage and Scholar will parse it, generate a digest, and add it to your library — same as arXiv papers.
+Drag any PDF into iMessage and PaperPing will parse it, generate a digest, and add it to your library — same as arXiv papers.
 
 ---
 
