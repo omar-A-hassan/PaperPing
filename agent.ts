@@ -112,6 +112,11 @@ function checkFullDiskAccess(): void {
 
 // ─── Config validation ────────────────────────────────────────────────────────
 function validateConfig(): void {
+  if (YOUR_NUMBER === "+1234567890") {
+    throw new Error(
+      "YOUR_PHONE_NUMBER is still the placeholder. Set it in .env (copy .env.example)."
+    );
+  }
   if (!["anthropic", "openrouter"].includes(LLM_PROVIDER)) {
     throw new Error(
       `Unsupported LLM_PROVIDER "${LLM_PROVIDER}". Use "anthropic" or "openrouter".`
@@ -261,7 +266,19 @@ async function main() {
     onError: (err) => console.error(`[watcher-error] ${err.message}`),
   });
 
-  console.log("📚 Scholar Agent started. Watching for messages...");
+  let ollamaStatus = "✗ offline (recency fallback)";
+  try {
+    const r = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(1500) });
+    if (r.ok) ollamaStatus = "✓ connected";
+  } catch { /* not running */ }
+
+  console.log(
+    `📚 PaperPing started\n` +
+    `  number   : ${YOUR_NUMBER}\n` +
+    `  provider : ${LLM_PROVIDER} (${LLM_MODEL})\n` +
+    `  ollama   : ${ollamaStatus}\n` +
+    `  watching for messages...`
+  );
 }
 
 main().catch(console.error);

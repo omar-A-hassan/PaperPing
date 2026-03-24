@@ -7,4 +7,4 @@ export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "";
 export const LLM_PROVIDER = (process.env.LLM_PROVIDER ?? "anthropic").toLowerCase();
 export const LLM_MODEL =
   process.env.LLM_MODEL ??
-  (LLM_PROVIDER === "openrouter" ? "openrouter/auto" : "claude-sonnet-4-20250514");
+  (LLM_PROVIDER === "openrouter" ? "openrouter/auto" : "claude-sonnet-4-5");
