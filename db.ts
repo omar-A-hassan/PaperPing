@@ -3,13 +3,6 @@ import { mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-// sqlite-vec: loaded dynamically to avoid hard crash when not installed
-let _vecPath: string | null = null;
-try {
-  const { getLoadablePath } = await import("sqlite-vec");
-  _vecPath = getLoadablePath();
-} catch { /* sqlite-vec not installed or not supported */ }
-
 let db: Database | null = null;
 
 function getDB(): Database {
@@ -23,15 +16,6 @@ export function initDB(path?: string): void {
     mkdirSync(join(homedir(), ".scholar"), { recursive: true });
   }
   db = new Database(dbPath);
-
-  // Load sqlite-vec extension for vector similarity search
-  if (_vecPath) {
-    try {
-      db.loadExtension(_vecPath);
-    } catch (err) {
-      console.warn(`[db] sqlite-vec load failed: ${err}`);
-    }
-  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS papers (
@@ -99,19 +83,11 @@ export function initDB(path?: string): void {
       content='papers', content_rowid='id',
       tokenize='porter ascii'
     );
+    CREATE TABLE IF NOT EXISTS session_summary_embeddings (
+      rowid    INTEGER PRIMARY KEY,
+      embedding TEXT NOT NULL
+    );
   `);
-
-  // Create vec0 table for session summary embeddings (only if extension loaded)
-  if (_vecPath) {
-    try {
-      db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS session_summary_embeddings
-        USING vec0(embedding FLOAT[768])
-      `);
-    } catch (err) {
-      console.warn(`[db] vec0 table creation failed: ${err}`);
-    }
-  }
 
   // Safe column additions (SQLite throws if column already exists — ignore)
   const safeAlter = (sql: string) => { try { db!.exec(sql); } catch { /* column exists */ } };
@@ -608,14 +584,23 @@ export function clearActivePapers(sender: string): void {
     .run(sender);
 }
 
-// ─── Session Embeddings (sqlite-vec, optional) ────────────────────────────────
+// ─── Session Embeddings (pure-JS cosine similarity, no native extension needed) ─
+
+function cosineSim(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    normA += a[i]! * a[i]!;
+    normB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
 
 export function storeSessionEmbedding(summaryId: number, embedding: number[]): void {
-  try {
-    getDB()
-      .query(`INSERT OR REPLACE INTO session_summary_embeddings(rowid, embedding) VALUES (?, ?)`)
-      .run(summaryId, JSON.stringify(embedding));
-  } catch { /* vec0 table may not exist if extension failed to load */ }
+  getDB()
+    .query(`INSERT OR REPLACE INTO session_summary_embeddings(rowid, embedding) VALUES (?, ?)`)
+    .run(summaryId, JSON.stringify(embedding));
 }
 
 export function findSimilarSessions(
@@ -624,29 +609,28 @@ export function findSimilarSessions(
   limit = 3
 ): Array<{ summary: string; created_at: string }> {
   try {
-    // KNN search against all session summary embeddings
-    const candidates = getDB()
+    // Fetch all embeddings joined with their summaries for this sender
+    const rows = getDB()
       .query(`
-        SELECT rowid, distance
-        FROM session_summary_embeddings
-        WHERE embedding MATCH ?
-        ORDER BY distance
-        LIMIT ?
+        SELECT ss.id, ss.summary, ss.created_at, sse.embedding
+        FROM session_summaries ss
+        JOIN session_summary_embeddings sse ON sse.rowid = ss.id
+        WHERE ss.sender = ?
       `)
-      .all(JSON.stringify(queryEmbedding), limit * 3) as Array<{ rowid: number; distance: number }>;
+      .all(sender) as Array<{ id: number; summary: string; created_at: string; embedding: string }>;
 
-    if (candidates.length === 0) return [];
+    if (rows.length === 0) return [];
 
-    // Filter candidates to this sender and collect results in distance order
-    const result: Array<{ summary: string; created_at: string }> = [];
-    for (const c of candidates) {
-      if (result.length >= limit) break;
-      const row = getDB()
-        .query(`SELECT summary, created_at FROM session_summaries WHERE id = ? AND sender = ?`)
-        .get(c.rowid, sender) as { summary: string; created_at: string } | null;
-      if (row) result.push(row);
-    }
-    return result;
+    // Score and sort by cosine similarity
+    return rows
+      .map((r) => ({
+        summary: r.summary,
+        created_at: r.created_at,
+        score: cosineSim(queryEmbedding, JSON.parse(r.embedding) as number[]),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ summary, created_at }) => ({ summary, created_at }));
   } catch {
     return [];
   }

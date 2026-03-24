@@ -1,4 +1,5 @@
 import { ANTHROPIC_API_KEY, OPENROUTER_API_KEY, LLM_PROVIDER, LLM_MODEL } from "./config";
+import { DOMParser } from "@xmldom/xmldom";
 
 const DIGEST_SYSTEM_PROMPT = `You are a research paper digest assistant. Given a paper's title and abstract, reply with EXACTLY 3 sentences in this format:
 
@@ -68,24 +69,25 @@ export async function fetchArxivFeed(topic: string): Promise<ArxivPaper[]> {
 
     try {
       const dom = new DOMParser().parseFromString(xml, "text/xml");
-      const entries = dom.querySelectorAll("entry");
+      const entries = Array.from(dom.getElementsByTagName("entry"));
       const papers: ArxivPaper[] = [];
 
-      for (const entry of Array.from(entries)) {
-        const idText = entry.querySelector("id")?.textContent ?? "";
+      for (const entry of entries) {
+        const idText = entry.getElementsByTagName("id")[0]?.textContent ?? "";
         const arxivIdMatch = idText.match(/(\d{4}\.\d{4,5}(?:v\d+)?)/);
         if (!arxivIdMatch) continue;
 
-        const authorNames = Array.from(entry.querySelectorAll("author name")).map(
-          (n: Element) => n.textContent?.trim() ?? ""
-        );
+        const authorEls = Array.from(entry.getElementsByTagName("author"));
+        const authorNames = authorEls.map(
+          (a) => a.getElementsByTagName("name")[0]?.textContent?.trim() ?? ""
+        ).filter(Boolean);
 
         papers.push({
           arxivId: arxivIdMatch[1]!,
-          title: entry.querySelector("title")?.textContent?.trim() ?? "",
+          title: entry.getElementsByTagName("title")[0]?.textContent?.trim() ?? "",
           authors: authorNames.join(", "),
-          abstract: entry.querySelector("summary")?.textContent?.trim() ?? "",
-          publishedDate: entry.querySelector("published")?.textContent?.trim() ?? "",
+          abstract: entry.getElementsByTagName("summary")[0]?.textContent?.trim() ?? "",
+          publishedDate: entry.getElementsByTagName("published")[0]?.textContent?.trim() ?? "",
         });
       }
       return papers;

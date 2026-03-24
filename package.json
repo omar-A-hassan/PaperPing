@@ -9,11 +9,14 @@
   },
   "dependencies": {
     "@photon-ai/imessage-kit": "latest",
-    "pdf-parse": "^2.4.5",
-    "sqlite-vec": "^0.1.7"
+    "@xmldom/xmldom": "^0.8.11",
+    "better-sqlite3": "^12.8.0",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/pdf-parse": "^1.1.5",
+    "@types/xmldom": "^0.1.34",
     "bun-types": "^1.3.11"
   }
 }
