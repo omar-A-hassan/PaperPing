@@ -195,7 +195,7 @@ async function runAnthropicLoop(
 }
 
 // ─── OpenRouter loop ──────────────────────────────────────────────────────────
-async function runOpenRouterLoop(
+export async function runOpenRouterLoop(
   systemPrompt: string,
   contextMessages: MessageTurn[],
   sender: string
@@ -239,14 +239,16 @@ async function runOpenRouterLoop(
     const data = await response.json();
     const choice = data?.choices?.[0];
     const message = choice?.message;
-    const finishReason: string = choice?.finish_reason ?? "stop";
 
     if (!message) {
       throw new Error("OpenRouter: empty response");
     }
 
-    // No tool calls → return text
-    if (!message.tool_calls || message.tool_calls.length === 0 || finishReason !== "tool_calls") {
+    // No tool calls → return text.
+    // We intentionally do NOT check finish_reason here — many models (Nemotron,
+    // Mistral, Llama, etc.) return "stop" even when emitting tool_calls.
+    // The only reliable signal is whether tool_calls is populated.
+    if (!message.tool_calls || message.tool_calls.length === 0) {
       const text = extractOpenRouterText(message);
       return text || "I'm not sure how to respond to that.";
     }

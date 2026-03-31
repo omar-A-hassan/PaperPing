@@ -101,8 +101,8 @@ function checkFullDiskAccess(): void {
   } catch (err: any) {
     if (err?.message?.includes("SQLITE_CANTOPEN")) {
       console.error(
-        "  Scholar needs Full Disk Access.\n" +
-        "     System Settings -> Privacy & Security -> Full Disk Access -> add Terminal (or your app)"
+        "  PaperPing needs Full Disk Access.\n" +
+        "     System Settings → Privacy & Security → Full Disk Access → add PaperPing.app"
       );
       process.exit(1);
     }

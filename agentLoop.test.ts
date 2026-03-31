@@ -7,7 +7,7 @@ process.env.LLM_MODEL = "claude-test";
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { initDB, getSession, upsertSession } from "./db";
-import { agentLoop } from "./agentLoop";
+import { agentLoop, runOpenRouterLoop } from "./agentLoop";
 
 const SENDER = "+1loop";
 const originalFetch = global.fetch;
@@ -194,5 +194,56 @@ describe("context", () => {
     const secondCall = llmCalls[1];
     const hasHistory = secondCall?.messages?.length > 1;
     expect(hasHistory).toBe(true);
+  });
+});
+
+// ─── OpenRouter provider (tested via runOpenRouterLoop directly) ───────────────
+// LLM_PROVIDER is a module-level const — it cannot be swapped per-test.
+// We bypass provider routing by calling runOpenRouterLoop directly.
+
+describe("OpenRouter provider", () => {
+  const OR_SENDER = "+1ortest";
+  const OR_CONTEXT = [{ role: "user" as const, content: "hello" }];
+
+  test("text-only response returns assistant text", async () => {
+    global.fetch = (async () => makeOpenRouterTextResponse("Hi from OR!")) as any;
+    const result = await runOpenRouterLoop("system", OR_CONTEXT, OR_SENDER);
+    expect(result).toBe("Hi from OR!");
+  });
+
+  test("tool call executes even when finish_reason is 'stop' (regression: was dropped pre-fix)", async () => {
+    // Regression: before the fix, finish_reason:"stop" caused tool_calls to be ignored.
+    // This response has tool_calls populated but finish_reason:"stop" — the pre-fix bug.
+    const toolCallWithStopReason = new Response(
+      JSON.stringify({
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{ id: "t1", type: "function", function: { name: "list_history", arguments: "{}" } }],
+          },
+          finish_reason: "stop",
+        }],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+    let callCount = 0;
+    global.fetch = (async () => {
+      return callCount++ === 0 ? toolCallWithStopReason : makeOpenRouterTextResponse("tool result reply");
+    }) as any;
+    const result = await runOpenRouterLoop("system", OR_CONTEXT, OR_SENDER);
+    expect(result).toBe("tool result reply");
+    expect(callCount).toBe(2); // first call returned tool_calls, second returned text
+  });
+
+  test("tool call executes with finish_reason 'tool_calls'", async () => {
+    let callCount = 0;
+    global.fetch = (async () => {
+      return callCount++ === 0
+        ? makeOpenRouterToolResponse("list_history", "t2")
+        : makeOpenRouterTextResponse("done");
+    }) as any;
+    const result = await runOpenRouterLoop("system", OR_CONTEXT, OR_SENDER);
+    expect(result).toBe("done");
+    expect(callCount).toBe(2);
   });
 });

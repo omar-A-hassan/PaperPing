@@ -8,6 +8,16 @@ Built with [Photon iMessage Kit](https://github.com/photon-hq/imessage-kit), [Bu
 
 ---
 
+## Pre-built App
+
+Don't want to build from source? The pre-built Mac app (`PaperPing.app`) includes a menu bar icon, a guided setup wizard, and a one-click DMG installer.
+
+**Available on Gumroad — $49**
+
+The core agent (this repo) is MIT licensed and fully auditable. The pre-built app is what you pay for.
+
+---
+
 ## Setup
 
 ```bash
@@ -17,7 +27,7 @@ curl -fsSL https://bun.sh/install | bash
 # 2. Install dependencies
 bun install
 
-# 3. Grant Full Disk Access to Terminal
+# 3. Grant Full Disk Access to Terminal (dev/source mode)
 #    System Settings → Privacy & Security → Full Disk Access → add Terminal
 
 # 4. Set required environment variables
@@ -217,3 +227,7 @@ bun --watch agent.ts  # dev mode with hot reload
 ```
 
 Tests use in-memory SQLite and mock all network calls (arXiv, Anthropic, OpenRouter, Ollama). No API keys needed to run tests.
+
+```bash
+bun test           # run all tests (112 tests)
+```

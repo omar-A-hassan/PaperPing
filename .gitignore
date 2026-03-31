@@ -39,3 +39,11 @@ tmp/
 .mcp.json
 claude.md
 .gstack/
+
+# Swift wrapper + build pipeline (not open source — pre-built app on Gumroad)
+MenuBar/
+scripts/
+*.app
+*.dmg
+PaperPing_bin
+paperpingd
