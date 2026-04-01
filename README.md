@@ -6,15 +6,6 @@ PaperPing runs locally on your Mac. Text it an arXiv link, a question, or a pape
 
 Built with [Photon iMessage Kit](https://github.com/photon-hq/imessage-kit), [Bun](https://bun.sh), and SQLite. Your library is stored locally at `~/.scholar/scholar.db` — your conversation history and papers never leave your machine, but messages and paper content are sent to your configured LLM provider (Anthropic or OpenRouter) to generate responses and digests.
 
----
-
-## Pre-built App
-
-Don't want to build from source? The pre-built Mac app (`PaperPing.app`) includes a menu bar icon, a guided setup wizard, and a one-click DMG installer.
-
-**Available on Gumroad — $49**
-
-The core agent (this repo) is MIT licensed and fully auditable. The pre-built app is what you pay for.
 
 ---
 
