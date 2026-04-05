@@ -16,10 +16,17 @@ import {
   toAnthropicTools,
   toOpenRouterTools,
 } from "./tools";
-import { LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY, OPENROUTER_API_KEY } from "./config";
+import { LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY } from "./config";
+import { getProviderConfig } from "./llmClient";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const MAX_TOOL_ITERATIONS = 5;
+
+// Models that support the reasoning parameter (OpenRouter + xAI)
+const REASONING_MODELS = ["deepseek/deepseek-r1", "qwen/qwq", "openai/o1", "openai/o3"];
+function isReasoningModel(model: string): boolean {
+  return REASONING_MODELS.some((prefix) => model.startsWith(prefix));
+}
 
 // ─── Anthropic wire types ─────────────────────────────────────────────────────
 type AnthropicContent =
@@ -78,7 +85,7 @@ export async function agentLoop(
   // ── Run LLM loop ──────────────────────────────────────────────────────────
   let finalReply: string;
   try {
-    if (LLM_PROVIDER === "openrouter") {
+    if (LLM_PROVIDER === "openrouter" || LLM_PROVIDER === "grok") {
       finalReply = await runOpenRouterLoop(ctx.systemPrompt, ctx.messages, sender);
     } else {
       finalReply = await runAnthropicLoop(ctx.systemPrompt, ctx.messages, sender);
@@ -213,27 +220,27 @@ export async function runOpenRouterLoop(
     const body: Record<string, any> = {
       model: LLM_MODEL,
       max_tokens: 1024,
-      reasoning: { effort: "none" },
       messages,
       tools,
     };
+    if (isReasoningModel(LLM_MODEL)) {
+      body.reasoning = { effort: "none" };
+    }
 
     // Force text on last iteration
     if (iteration === MAX_TOOL_ITERATIONS - 1) {
       delete body.tools;
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const { url, headers } = getProviderConfig();
+    const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
     if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`);
+      throw new Error(`${LLM_PROVIDER} API error: ${response.status}`);
     }
 
     const data = await response.json();

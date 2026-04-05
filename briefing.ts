@@ -9,7 +9,8 @@ import {
 } from "./db";
 import { fetchArxivFeed, generateDigest } from "./fetchers";
 import type { ArxivPaper } from "./fetchers";
-import { LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, YOUR_NUMBER } from "./config";
+import { YOUR_NUMBER } from "./config";
+import { callSimpleText } from "./llmClient";
 
 // ─── Relevance scoring ────────────────────────────────────────────────────────
 // Score a paper against user profile keywords.
@@ -51,42 +52,7 @@ Why would they be interested in this paper: "${paper.title}" — ${paper.abstrac
 One sentence only. Be specific. Reference their actual work or interests. No filler phrases like "based on your interest".`;
 
   try {
-    if (LLM_PROVIDER === "openrouter") {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: LLM_MODEL,
-          max_tokens: 80,
-          reasoning: { effort: "none" },
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      if (!response.ok) return "";
-      const data = await response.json();
-      const text = data?.choices?.[0]?.message?.content;
-      return typeof text === "string" ? text.trim() : "";
-    }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        max_tokens: 80,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!response.ok) return "";
-    const data = await response.json();
-    return data.content[0].text.trim();
+    return await callSimpleText([{ role: "user", content: prompt }], { maxTokens: 80 });
   } catch {
     return "";
   }

@@ -57,7 +57,7 @@ describe("assembleContext", () => {
   test("no session → empty messages, base system prompt", async () => {
     const ctx = await assembleContext(SENDER);
     expect(ctx.messages).toHaveLength(0);
-    expect(ctx.systemPrompt).toContain("Scholar");
+    expect(ctx.systemPrompt).toContain("PaperPing");
   });
 
   test("session with 2 turns → messages returned in order", async () => {

@@ -317,6 +317,41 @@ export function purgeSentGuids(): void {
     .run(cutoff);
 }
 
+// ─── Sent-text echo guard (DB-persisted, survives restarts) ───────────────────
+// Secondary defence for cases where iMessage re-queues a "Not Delivered" message
+// with a new chat.db row and a new GUID, bypassing the GUID guard.
+// Normalizes text (lowercase, collapsed whitespace) so minor iMessage reformatting
+// still matches.
+
+const SENT_TEXT_TTL_MS = 30 * 60 * 1000; // 30 min — covers Not Delivered retry window
+
+function normalizeSentText(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+export function recordSentText(text: string): void {
+  const key = `sent_text:${normalizeSentText(text)}`;
+  getDB()
+    .query(`INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)`)
+    .run(key, new Date().toISOString());
+}
+
+export function wasSentText(text: string): boolean {
+  const cutoff = new Date(Date.now() - SENT_TEXT_TTL_MS).toISOString();
+  const key = `sent_text:${normalizeSentText(text)}`;
+  const row = getDB()
+    .query(`SELECT value FROM config WHERE key = ? AND value > ?`)
+    .get(key, cutoff);
+  return !!row;
+}
+
+export function purgeSentTexts(): void {
+  const cutoff = new Date(Date.now() - SENT_TEXT_TTL_MS * 2).toISOString();
+  getDB()
+    .query(`DELETE FROM config WHERE key LIKE 'sent_text:%' AND value < ?`)
+    .run(cutoff);
+}
+
 // ─── Briefing Config ──────────────────────────────────────────────────────────
 
 const DEFAULT_BRIEFING_HOUR = 7;

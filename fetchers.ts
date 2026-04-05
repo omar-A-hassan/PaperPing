@@ -1,4 +1,4 @@
-import { ANTHROPIC_API_KEY, OPENROUTER_API_KEY, LLM_PROVIDER, LLM_MODEL } from "./config";
+import { callSimpleText } from "./llmClient";
 import { DOMParser } from "@xmldom/xmldom";
 
 const DIGEST_SYSTEM_PROMPT = `You are a research paper digest assistant. Given a paper's title and abstract, reply with EXACTLY 3 sentences in this format:
@@ -98,67 +98,12 @@ export async function fetchArxivFeed(topic: string): Promise<ArxivPaper[]> {
 }
 
 // ─── generateDigest ───────────────────────────────────────────────────────────
-function extractOpenRouterText(data: any): string {
-  const message = data?.choices?.[0]?.message;
-
-  const collectText = (value: any): string => {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value)) return value.map((item) => collectText(item)).join("");
-    if (!value || typeof value !== "object") return "";
-    if (typeof value.text === "string") return value.text;
-    if (typeof value.content === "string") return value.content;
-    if (Array.isArray(value.content)) return collectText(value.content);
-    return "";
-  };
-
-  const text = collectText(message?.content).trim();
-  if (text) return text;
-
-  const fallback = collectText(data?.choices?.[0]).trim();
-  if (fallback) return fallback;
-
-  throw new Error("OpenRouter response parsing failed");
-}
-
 export async function generateDigest(paperText: string): Promise<string> {
-  return withRetry(async () => {
-    if (LLM_PROVIDER === "openrouter") {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: LLM_MODEL,
-          max_tokens: 400,
-          reasoning: { effort: "none" },
-          messages: [
-            { role: "system", content: DIGEST_SYSTEM_PROMPT },
-            { role: "user", content: paperText },
-          ],
-        }),
-      });
-      if (!response.ok) throw new Error(`OpenRouter API error: ${response.status}`);
-      return extractOpenRouterText(await response.json());
-    }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        max_tokens: 300,
-        system: DIGEST_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: paperText }],
-      }),
-    });
-    if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
-    const data = await response.json();
-    return data.content[0].text.trim();
-  }, 1);
+  return withRetry(
+    () => callSimpleText(
+      [{ role: "user", content: paperText }],
+      { system: DIGEST_SYSTEM_PROMPT, maxTokens: 400 }
+    ),
+    1
+  );
 }

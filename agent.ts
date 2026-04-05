@@ -1,10 +1,14 @@
 import { IMessageSDK } from "@photon-ai/imessage-kit";
 import { Database } from "bun:sqlite";
+import { writeFileSync, readFileSync, unlinkSync, existsSync } from "fs";
 import {
   initDB,
   recordSentGuid,
   isSentGuid,
   purgeSentGuids,
+  recordSentText,
+  wasSentText,
+  purgeSentTexts,
   getBriefingLastSent,
   setBriefingLastSent,
   getBriefingConfig,
@@ -15,10 +19,10 @@ import {
 } from "./db";
 import { agentLoop } from "./agentLoop";
 import { sendMorningBriefing } from "./briefing";
-import { YOUR_NUMBER, LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY, OPENROUTER_API_KEY } from "./config";
+import { YOUR_NUMBER, LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, GEMINI_API_KEY } from "./config";
 
 // Re-export so other modules can import provider config from a single place
-export { LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY, OPENROUTER_API_KEY };
+export { LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, GEMINI_API_KEY };
 
 // ─── SDK ──────────────────────────────────────────────────────────────────────
 const sdk = new IMessageSDK({
@@ -30,33 +34,51 @@ const sdk = new IMessageSDK({
   },
 });
 
-// ─── Content-based echo guard (in-memory, survives brief restart gaps) ────────
-// GUIDs are the primary guard. Content-hash is secondary — covers cases where
-// the SDK returns no GUID (e.g. self-send on macOS mirrors the message back
-// without an outbound GUID on the echo row).
-const SENT_TEXT_TTL_MS = 5 * 60 * 1000; // 5 min
-const recentlySentTexts = new Map<string, number>(); // key -> timestamp
+// ─── Single-instance lock ─────────────────────────────────────────────────────
+// Prevents multiple PaperPing processes from running simultaneously, which
+// causes duplicate sends, echo loops, and "Not Delivered" errors.
+const LOCK_FILE = `${process.env.HOME}/.scholar/paperpingd.lock`;
 
-function markSentText(text: string): void {
-  recentlySentTexts.set(text.slice(0, 300), Date.now());
-  // Prune stale entries
-  const cutoff = Date.now() - SENT_TEXT_TTL_MS;
-  for (const [k, v] of recentlySentTexts) {
-    if (v < cutoff) recentlySentTexts.delete(k);
+function acquireLock(): void {
+  if (existsSync(LOCK_FILE)) {
+    const existingPid = readFileSync(LOCK_FILE, "utf-8").trim();
+    // Check if the process is still alive
+    try {
+      process.kill(Number(existingPid), 0); // signal 0 = existence check
+      console.error(
+        `❌ Another PaperPing instance is already running (PID ${existingPid}).\n` +
+        `   Kill it with: kill ${existingPid}`
+      );
+      process.exit(1);
+    } catch {
+      // Process is dead — stale lock file, overwrite it
+      console.log(`[lock] Stale lock from PID ${existingPid} — removing.`);
+    }
   }
+  writeFileSync(LOCK_FILE, String(process.pid), "utf-8");
+  console.log(`[lock] Acquired (PID ${process.pid})`);
 }
 
-function wasRecentlySent(text: string): boolean {
-  const ts = recentlySentTexts.get(text.slice(0, 300));
-  return !!ts && Date.now() - ts < SENT_TEXT_TTL_MS;
+function releaseLock(): void {
+  try { unlinkSync(LOCK_FILE); } catch { /* already gone */ }
 }
+
+// ─── Chat ID cache ────────────────────────────────────────────────────────────
+// Sending via chat ID ("iMessage;+;+number") uses AppleScript's `chat id "..."`
+// path, which is a direct thread reference. This is more reliable for self-send
+// than `buddy "phone"` (contact lookup), which intermittently fails to get a
+// delivery receipt on macOS. Captured from the first inbound message.
+let userChatId: string | null = null;
 
 async function send(to: string, text: string): Promise<void> {
   console.log(`[send] ${JSON.stringify(text.slice(0, 80))}`);
   // Mark content BEFORE sdk.send() — the SDK polls every 2s and can echo the message
   // back before sdk.send() returns, causing a loop if we mark after.
-  markSentText(text);
-  const result = await sdk.send(to, text);
+  // DB-persisted: survives restarts, handles "Not Delivered" re-queued messages.
+  recordSentText(text);
+  // Prefer chat ID over phone number: avoids "Not Delivered" on self-send
+  const target = userChatId ?? to;
+  const result = await sdk.send(target, text);
 
   // Try every known GUID path the SDK might return
   const guid =
@@ -99,10 +121,11 @@ function checkFullDiskAccess(): void {
     chatDb.query("SELECT 1 FROM message LIMIT 1").get();
     chatDb.close();
   } catch (err: any) {
-    if (err?.message?.includes("SQLITE_CANTOPEN")) {
+    const msg = err?.message ?? "";
+    if (msg.includes("SQLITE_CANTOPEN") || msg.includes("authorization denied")) {
       console.error(
-        "  PaperPing needs Full Disk Access.\n" +
-        "     System Settings → Privacy & Security → Full Disk Access → add PaperPing.app"
+        "❌ PaperPing needs Full Disk Access.\n" +
+        "   System Settings → Privacy & Security → Full Disk Access → add PaperPing.app"
       );
       process.exit(1);
     }
@@ -117,17 +140,12 @@ function validateConfig(): void {
       "YOUR_PHONE_NUMBER is still the placeholder. Set it in .env (copy .env.example)."
     );
   }
-  if (!["anthropic", "openrouter"].includes(LLM_PROVIDER)) {
-    throw new Error(
-      `Unsupported LLM_PROVIDER "${LLM_PROVIDER}". Use "anthropic" or "openrouter".`
-    );
+  if (!["anthropic", "openrouter", "grok"].includes(LLM_PROVIDER)) {
+    throw new Error(`Unsupported LLM_PROVIDER "${LLM_PROVIDER}". Use "anthropic", "openrouter", or "grok".`);
   }
-  if (LLM_PROVIDER === "anthropic" && !ANTHROPIC_API_KEY) {
-    throw new Error("Missing ANTHROPIC_API_KEY for Anthropic mode");
-  }
-  if (LLM_PROVIDER === "openrouter" && !OPENROUTER_API_KEY) {
-    throw new Error("Missing OPENROUTER_API_KEY for OpenRouter mode");
-  }
+  if (LLM_PROVIDER === "anthropic"  && !ANTHROPIC_API_KEY)  throw new Error("Missing ANTHROPIC_API_KEY for Anthropic mode");
+  if (LLM_PROVIDER === "openrouter" && !OPENROUTER_API_KEY) throw new Error("Missing OPENROUTER_API_KEY for OpenRouter mode");
+  if (LLM_PROVIDER === "grok"       && !XAI_API_KEY)        throw new Error("Missing XAI_API_KEY for Grok mode");
 }
 
 // ─── Morning briefing loop ────────────────────────────────────────────────────
@@ -155,12 +173,14 @@ function startBriefingLoop(sdkInstance: IMessageSDK): void {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
+  acquireLock(); // must be first — exits if another instance is running
   checkFullDiskAccess();
   validateConfig();
   initDB(); // uses ~/.scholar/scholar.db
 
-  // Purge any stale sent-GUID entries from previous sessions
+  // Purge stale echo-guard entries from previous sessions
   purgeSentGuids();
+  purgeSentTexts();
 
   startBriefingLoop(sdk);
 
@@ -168,14 +188,27 @@ async function main() {
     onDirectMessage: async (msg) => {
       const text = msg.text?.trim() ?? "";
 
+      // Capture the chat ID on first message so send() can use direct thread reference.
+      // Persisted to ~/.scholar/chat_id.txt so the Swift app can use the real ID
+      // for quick actions instead of the configured phone number (which may differ
+      // from iMessage's normalized chat_identifier).
+      if (!userChatId && (msg as any).chatId) {
+        userChatId = (msg as any).chatId as string;
+        console.log(`[chat] thread id: ${userChatId}`);
+        try {
+          writeFileSync(`${process.env.HOME}/.scholar/chat_id.txt`, userChatId, "utf-8");
+        } catch { /* non-fatal */ }
+      }
+
       // Guard 1: persisted GUID (survives restarts, primary defence)
       if (msg.guid && isSentGuid(msg.guid)) {
         console.log(`[skip] guid-match msgid=${msg.id} guid=${msg.guid}`);
         return;
       }
 
-      // Guard 2: in-memory content match (handles SDK returning no GUID)
-      if (wasRecentlySent(text)) {
+      // Guard 2: DB-persisted content match (survives restarts, handles re-queued
+      // "Not Delivered" messages that iMessage stores with a new GUID)
+      if (wasSentText(text)) {
         console.log(`[skip] content-match msgid=${msg.id}`);
         return;
       }
@@ -284,6 +317,6 @@ async function main() {
 main().catch(console.error);
 
 // Graceful shutdown
-process.on("SIGINT", () => {
-  process.exit(0);
-});
+process.on("SIGINT",  () => { releaseLock(); process.exit(0); });
+process.on("SIGTERM", () => { releaseLock(); process.exit(0); });
+process.on("exit",    ()  => { releaseLock(); });

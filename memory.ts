@@ -16,7 +16,8 @@ import {
   ScholarUserProfile,
 } from "./db";
 import { getEmbedding } from "./embedder";
-import { LLM_PROVIDER, LLM_MODEL, ANTHROPIC_API_KEY, OPENROUTER_API_KEY } from "./config";
+import { LLM_PROVIDER, LLM_MODEL } from "./config";
+import { callSimpleText } from "./llmClient";
 
 // ─── Token budget constants ────────────────────────────────────────────────────
 export const SESSION_TTL_MS = 60 * 60 * 1000; // 60 min idle → new session
@@ -214,7 +215,7 @@ function buildSystemPrompt(
   sessionSummaryBlock: string
 ): string {
   const sections: string[] = [
-    `You are Scholar, a research assistant that lives in iMessage. You help the user discover, understand, and remember academic papers.`,
+    `You are PaperPing, a research assistant that lives in iMessage. You help the user discover, understand, and remember academic papers.`,
   ];
 
   if (profileBlock && profileBlock !== "New user — no profile built yet.") {
@@ -418,44 +419,7 @@ Rules:
 }
 
 // ─── callCheapLLM ─────────────────────────────────────────────────────────────
-// Uses the cheapest available model for compression and profile extraction.
+// Thin wrapper — provider routing lives in llmClient.ts.
 async function callCheapLLM(prompt: string): Promise<string> {
-  if (LLM_PROVIDER === "openrouter") {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        max_tokens: 500,
-        reasoning: { effort: "none" },
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!response.ok) throw new Error(`OpenRouter LLM error: ${response.status}`);
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content === "string") return content.trim();
-    throw new Error("OpenRouter LLM: empty response");
-  }
-
-  // Anthropic
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      max_tokens: 500,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  if (!response.ok) throw new Error(`Anthropic LLM error: ${response.status}`);
-  const data = await response.json();
-  return data.content[0].text.trim();
+  return callSimpleText([{ role: "user", content: prompt }]);
 }
