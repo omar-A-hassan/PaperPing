@@ -12,9 +12,6 @@ Built with [Photon iMessage Kit](https://github.com/photon-hq/imessage-kit), [Bu
 
 Don't want to build from source? The pre-built Mac app (`PaperPing.app`) includes a menu bar icon, a guided setup wizard, and a one-click DMG installer.
 
-**Available on Gumroad — $49**
-
-The core agent (this repo) is MIT licensed and fully auditable. The pre-built app is what you pay for.
 
 ---
 
