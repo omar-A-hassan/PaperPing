@@ -8,13 +8,6 @@ Built with [Photon iMessage Kit](https://github.com/photon-hq/imessage-kit), [Bu
 
 ---
 
-## Pre-built App
-
-Don't want to build from source? The pre-built Mac app (`PaperPing.app`) includes a menu bar icon, a guided setup wizard, and a one-click DMG installer.
-
-
----
-
 ## Setup
 
 ```bash
